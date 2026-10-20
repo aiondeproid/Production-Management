@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>計画ボード</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">計画ボード</div>
+  <nav class="tabs">
+    <button data-tab="board" class="on">作業予定</button>
+    <button data-tab="master">製品マスタ</button>
+    <button data-tab="history">変更履歴</button>
+    <button data-tab="settings">設定</button>
+  </nav>
+  <label class="user">担当 <input id="user" placeholder="名前" size="8"></label>
+</header>
+
+<!-- 作業予定 -->
+<section id="tab-board" class="tab on">
+  <div class="daybar">
+    <button id="prev" title="前日">◀</button>
+    <input type="date" id="date">
+    <button id="next" title="翌日">▶</button>
+    <span id="dayinfo" class="dayinfo"></span>
+    <span id="rev" class="rev"></span>
+    <span class="spacer"></span>
+    <span id="dirty" class="dirty" hidden>未保存</span>
+    <button id="copyFrom" class="ghost">他の日からコピー</button>
+    <button id="save" class="primary">保存</button>
+    <button id="export" class="ghost">閲覧用に出力</button>
+  </div>
+  <div class="board">
+    <div class="main">
+      <div id="timeline" class="timeline card"></div>
+      <div id="lanes" class="lanes"></div>
+    </div>
+    <aside class="side">
+      <div class="card"><h3>負荷</h3><div id="gauges"></div></div>
+      <div class="card"><h3>チェック結果 <span id="alertCount"></span></h3><ul id="alerts" class="alerts"></ul></div>
+      <div class="card"><h3>人の目で確認</h3><div id="manual"></div></div>
+      <div class="card"><h3>メモ（閲覧用にも出ます）</h3><textarea id="memo" rows="3"></textarea></div>
+    </aside>
+  </div>
+</section>
+
+<!-- 製品マスタ -->
+<section id="tab-master" class="tab">
+  <div class="daybar">
+    <input id="mSearch" placeholder="コード・製品名で検索" size="24">
+    <label><input type="checkbox" id="mNoThaw"> 解凍kg未設定のみ</label>
+    <span class="spacer"></span>
+    <button id="mAdd" class="ghost">製品を追加</button>
+  </div>
+  <p class="hint">変更すると即保存されます。朝一・特殊原料などの印は製品名から自動推定したものなので、違っていたら直してください。</p>
+  <div class="tablewrap"><table id="mTable" class="grid"></table></div>
+</section>
+
+<!-- 変更履歴 -->
+<section id="tab-history" class="tab">
+  <div class="daybar"><label><input type="checkbox" id="hOnlyDay"> 表示中の日付だけ</label></div>
+  <div class="tablewrap"><table id="hTable" class="grid"></table></div>
+</section>
+
+<!-- 設定 -->
+<section id="tab-settings" class="tab">
+  <div class="settings">
+    <div class="card">
+      <h3>時間</h3>
+      <label>朝一の開始時刻 <input id="sDayStart" size="6"></label>
+      <label>夜勤の開始時刻 <input id="sNightStart" size="6"></label>
+    </div>
+    <div class="card">
+      <h3>解凍庫の容量（kg）</h3>
+      <div id="sThaw" class="row-inputs"></div>
+    </div>
+    <div class="card">
+      <h3>上限</h3>
+      <label>MS＋キャリア（両方使う製品）同時 <input id="sMachine" size="4"> 品</label>
+      <label>排水 ロティール <input id="sDrainR" size="4"> B／日</label>
+      <label>排水 ロティール（休日前） <input id="sDrainRPre" size="4"> B</label>
+      <label>排水 ロティール（夜間） <input id="sDrainRNight" size="4"> B</label>
+      <label>排水 フジ食品 <input id="sDrainF" size="4"> B／日</label>
+    </div>
+    <div class="card">
+      <h3>閲覧用HTMLの出力先（共有フォルダ）</h3>
+      <input id="sExport" class="wide">
+    </div>
+    <div class="card">
+      <h3>祝日・会社休日（日曜は自動で休み扱い）</h3>
+      <div class="row-inputs"><input type="date" id="hDate"><input id="hName" placeholder="名前（例：工場総会）"><button id="hAdd" class="ghost">追加</button></div>
+      <ul id="hList" class="hlist"></ul>
+    </div>
+    <button id="sSave" class="primary">設定を保存</button>
+  </div>
+</section>
+
+<div id="toast" class="toast" hidden></div>
+<datalist id="productList"></datalist>
+<script src="app.js"></script>
+</body>
+</html>

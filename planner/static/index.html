@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>生産計画</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">生産計画 <small>週間予定・作業予定</small></div>
+  <nav class="tabs">
+    <button data-tab="week" class="on">週間予定</button>
+    <button data-tab="day">作業予定</button>
+    <button data-tab="master">製品マスタ</button>
+    <button data-tab="history">変更履歴</button>
+  </nav>
+  <label class="user">担当 <input id="user" placeholder="名前" size="8"></label>
+</header>
+<div id="lockbar" class="lockbar" hidden></div>
+
+<section id="tab-week" class="tab on">
+  <div class="layout">
+    <aside class="weeks card">
+      <h3>週の一覧</h3>
+      <ul id="weekList"></ul>
+    </aside>
+    <div class="main">
+      <div class="weekbar">
+        <button id="prev" title="前の週">◀</button>
+        <h2 id="weekTitle"></h2>
+        <button id="next" title="次の週">▶</button>
+        <span id="revInfo" class="revinfo"></span>
+        <span class="spacer"></span>
+        <span id="dirty" class="dirty" hidden>未保存</span>
+        <button id="save" class="primary edit-only">保存</button>
+        <button id="issue" class="ghost edit-only" title="改版を上げて配布用Excelを出力します">発行（Excel出力）</button>
+      </div>
+      <p class="hint">赤字＝前回の発行から変わった明細。製品はコードか製品名で検索できます。⋮⋮ をドラッグすると別の日・ラインへ移動できます。</p>
+      <div class="gridwrap"><table id="grid" class="weekgrid"></table></div>
+      <div id="removed" class="removed" hidden></div>
+    </div>
+  </div>
+</section>
+
+<section id="tab-day" class="tab">
+  <div class="weekbar">
+    <button id="dPrev" title="前の日">◀</button>
+    <h2 id="dayTitle"></h2>
+    <button id="dNext" title="次の日">▶</button>
+    <div id="dayChips" class="daychips"></div>
+    <span class="spacer"></span>
+    <span id="dDirty" class="dirty" hidden>未保存</span>
+    <button id="dSave" class="primary edit-only">保存</button>
+    <button id="dRedraft" class="ghost edit-only" title="今の作業予定を捨てて、週間予定から案を作り直します">週間予定から作り直す</button>
+  </div>
+  <div class="weekbar issuebar">
+    <span id="dRevInfo" class="revinfo"></span>
+    <span class="spacer"></span>
+    <button id="dIssueZensho" class="ghost edit-only" title="前処理製造予定表（製品とB数）を発行します">前処理製造予定表を発行</button>
+    <button id="dPrintCols" class="ghost" title="成型予定表に印刷する項目を選びます">印刷する項目…</button>
+    <button id="dIssueSeikei" class="ghost edit-only" title="成型予定表（時刻つき）を発行します">成型予定表を発行</button>
+  </div>
+  <dialog id="printDlg" class="dlg">
+    <h3>成型予定表に印刷する項目</h3>
+    <p class="hint">チェックした項目だけを、この並びで印刷します。画面にはすべての項目を出します（印刷しない項目は見出しが灰色の点線）。選んだ内容はみんなで共通です。</p>
+    <div id="pcList" class="pclist"></div>
+    <div class="weekbar">
+      <span id="pcCount" class="sub"></span>
+      <span class="spacer"></span>
+      <button id="pcAll" class="edit-only">すべて</button>
+      <button id="pcDefault" class="edit-only" title="今の作業予定表と同じ項目">初期値に戻す</button>
+      <button id="pcCancel">閉じる</button>
+      <button id="pcSave" class="primary edit-only">保存</button>
+    </div>
+  </dialog>
+  <div id="dBanner"></div>
+  <p class="hint">開始＝前の製品の終了（5分単位に切り上げ）＋切替。終了＝開始＋B×分/B。開始時刻を入れるとその時刻に固定し、空にすると自動に戻ります。⋮⋮ をドラッグすると順番を変えられます。ラインやB数の合計は週間予定で変えてください。</p>
+  <div id="dayLines"></div>
+  <div id="dRemoved" class="removed" hidden></div>
+</section>
+
+<section id="tab-master" class="tab">
+  <div class="weekbar">
+    <input id="mSearch" placeholder="コード・製品名で検索" size="26">
+    <label><input type="checkbox" id="mNoYield"> 出来高/B 未設定のみ</label>
+    <span class="spacer"></span>
+    <button id="mAdd" class="ghost edit-only">製品を追加</button>
+  </div>
+  <p class="hint">変更するとすぐに保存されます。数量（cs）は「B × 出来高/B」で計算します。</p>
+  <div class="tablewrap"><table id="mTable" class="grid"></table></div>
+</section>
+
+<section id="tab-history" class="tab">
+  <div class="weekbar"><label><input type="checkbox" id="hOnlyWeek" checked> 表示中の週だけ</label></div>
+  <div class="tablewrap"><table id="hTable" class="grid"></table></div>
+</section>
+
+<div id="toast" class="toast" hidden></div>
+<datalist id="productList"></datalist>
+<datalist id="bettenList"></datalist>
+<script src="app.js"></script>
+<script src="day.js"></script>
+</body>
+</html>

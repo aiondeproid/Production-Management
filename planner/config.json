@@ -1,0 +1,8 @@
+{
+  "output_dir": "output",
+  "source_master_xls": "../Book1.xls",
+  "source_weekly_xls": "../2022年10月週間予定.xls",
+  "distribution": "配布部署：品管1・品管2・資材・マゼラー・玉ネギ",
+  "port": 8770,
+  "backup_keep": 30
+}
