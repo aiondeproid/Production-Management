@@ -139,6 +139,18 @@ table.grid { border-collapse: collapse; width: 100%; font-size: 13px; }
 .timeline .bar { position: absolute; top: 4px; bottom: 4px; border-radius: 3px; opacity: .85; min-width: 2px; }
 .bar.c0 { background: #4f7fd8; } .bar.c1 { background: #3fa37a; } .bar.c2 { background: #d08a2e; }
 .bar.c3 { background: #9a63c9; } .bar.c4 { background: #c75a6b; } .bar.c5 { background: #4aa3b5; }
+/* 機械割：号機ごとの段。バーの色はライン（A青・B緑・C橙・D紫）、不足は赤 */
+.mrow { display: grid; grid-template-columns: 80px minmax(0, 1fr); align-items: center; gap: 8px; }
+.mrow .mname { font-size: 12px; font-weight: bold; white-space: nowrap; }
+.mrow.lack .mname { color: var(--red); }
+.timeline.mtl { margin: 2px 0; height: 22px; }
+.mrow:last-child .timeline.mtl { margin-bottom: 16px; }
+.timeline.mtl.nolabel .tick { font-size: 0; }
+.timeline.mtl .bar { color: #fff; font-size: 11px; line-height: 14px; padding-left: 3px; overflow: hidden; white-space: nowrap; box-sizing: border-box; }
+.bar.ln0 { background: #4f7fd8; } .bar.ln1 { background: #3fa37a; } .bar.ln2 { background: #d08a2e; } .bar.ln3 { background: #9a63c9; }
+.bar.lack { background: var(--red); opacity: 1; }
+.mtag { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 4px; margin: 0 3px 1px 0; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-weight: bold; white-space: nowrap; }
+.mtag.lack { background: var(--red-soft); color: var(--red); }
 .tscroll { overflow-x: auto; }
 table.daytable { border-collapse: separate; border-spacing: 0; font-size: 13px; table-layout: fixed; }
 .daytable th { text-align: left; font-weight: normal; color: var(--ink); font-size: 12px; border-bottom: 1px solid var(--line); padding: 2px 4px; background: var(--card); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

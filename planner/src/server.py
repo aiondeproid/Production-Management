@@ -433,14 +433,34 @@ class Handler(BaseHTTPRequestHandler):
             "INSERT INTO day_rows(date, line, seq, code, batches, gap, start) VALUES(?,?,?,?,?,?,?)",
             [(date, r["line"], r["seq"], r["code"], r["batches"], r["gap"], r["start"]) for r in new],
         )
-        if changes or was_draft:
+        # 作業予定で変えた B数を週間予定にも反映する（タレ欄の自動の行は週間予定から計算するので追従する）
+        weekly = day.weekly_rows(con, date)
+        new_weekly = day.to_weekly(date, weekly, old_rows, new)
+        weekly_changes, _ = diff(weekly, new_weekly, products)
+        name = lambda c: (products.get(c) or {}).get("name") or c
+        for ln in LINES:
+            before = [w["code"] for w in weekly if w["line"] == ln]
+            after = [w["code"] for w in new_weekly if w["line"] == ln]
+            if before != after and sorted(before) == sorted(after):
+                weekly_changes.append(f"順番：{md(date)} {ln}ライン " + " → ".join(name(c) for c in after))
+        if weekly_changes:
+            con.execute("DELETE FROM weekly_items WHERE date=?", (date,))
+            con.executemany(
+                "INSERT INTO weekly_items(date, line, seq, code, batches) VALUES(?,?,?,?,?)",
+                [(w["date"], w["line"], w["seq"], w["code"], w["batches"]) for w in new_weekly],
+            )
+        if changes or was_draft or weekly_changes:
             msg = f"作業予定 {md(date)} 保存" + ("（週間予定からの案を保存）" if was_draft else "")
+            if changes:
+                msg += "\n" + "\n".join(changes)
+            if weekly_changes:
+                msg += "\n週間予定に反映\n" + "\n".join(weekly_changes)
             con.execute(
                 "INSERT INTO changelog(ts, week, user, message) VALUES(datetime('now','localtime'), ?, ?, ?)",
-                (monday_of(date), user, msg + ("\n" + "\n".join(changes) if changes else "")),
+                (monday_of(date), user, msg),
             )
         con.commit()
-        self.send_json({"ok": True, "changes": changes})
+        self.send_json({"ok": True, "changes": changes, "weekly_changes": weekly_changes})
 
     def issue_day(self, con, data):
         """成型予定表・前処理製造予定表の発行：控えを残して改版を上げ、Excelを書き出す"""

@@ -85,9 +85,11 @@ class Settings:
         self.gap = float(cfg["gap_min"])
         self.night = hm_to_min(cfg["night_break"])
         self.night_gap = float(cfg["night_break_min"])
+        self.machines = {db.norm(k): int(v) for k, v in cfg["machines"].items() if int(v) > 0}
 
     def as_dict(self):
-        return {"line_start": self.line_start, "gap": self.gap, "night": self.night, "night_gap": self.night_gap}
+        return {"line_start": self.line_start, "gap": self.gap, "night": self.night, "night_gap": self.night_gap,
+                "machines": self.machines}
 
 
 def compute(rows: list, prods: dict, st: Settings) -> list:
@@ -222,6 +224,58 @@ def sync(rows: list, weekly: list, prods: dict, st: Settings) -> list:
             diff = round(diff - (nb - r["batches"]), 4)
             r["batches"] = nb
     return renumber([r for r in rows if r["batches"] > 0])
+
+
+def to_weekly(date: str, weekly: list, old: list, new: list) -> list:
+    """作業予定で変えた B数を、その日の週間予定に反映した行を返す
+
+    作業予定の 保存前 → 保存後 の差だけを足し引きする（週間予定のほうで先に変えた分は残す）。
+    - B数が変わった製品は、マスの最後の明細で増減する（足りなければ前の明細も減らす）
+    - 作業予定で消した製品は、その分を減らす（0 になれば週間予定からも消える）
+    - 週間予定に無い製品が増えたら、マスの最後に足す
+    マスの中の並び順は、作業予定の順番に合わせる（作業予定に無い製品はマスの最後に残す）。
+    """
+    delta = defaultdict(float)
+    for r in new:
+        delta[(r["line"], r["code"])] += r["batches"]
+    for r in old:
+        delta[(r["line"], r["code"])] -= r["batches"]
+    rows = [dict(w) for w in weekly]
+    for k, d in delta.items():
+        d = round(d, 4)
+        if d == 0:
+            continue
+        same = [w for w in rows if (w["line"], w["code"]) == k]
+        if not same:
+            if d > 0:
+                seq = max([w["seq"] for w in rows if w["line"] == k[0]], default=-1) + 1
+                rows.append({"date": date, "line": k[0], "seq": seq, "code": k[1], "batches": d})
+            continue
+        for w in reversed(same):
+            if d == 0:
+                break
+            nb = round(max(0.0, w["batches"] + d), 4)
+            d = round(d - (nb - w["batches"]), 4)
+            w["batches"] = nb
+    return weekly_order([w for w in rows if w["batches"] > 0], new)
+
+
+def weekly_order(weekly: list, rows: list) -> list:
+    """週間予定のマスの並び順を、作業予定の順番に合わせる
+
+    同じ製品の明細が2つ以上あるときは、n 番目の明細を作業予定の n 番目の行の位置に置く
+    （作業予定で分けた行のほうが多いときは、余った行は無視する。明細のほうが多いときは最後の行の位置）。
+    """
+    pos = defaultdict(list)
+    for i, r in enumerate(sorted(rows, key=lambda r: (LINES.index(r["line"]), r["seq"]))):
+        pos[(r["line"], r["code"])].append(i)
+    n, keyed = defaultdict(int), []
+    for w in sorted(weekly, key=lambda w: (LINES.index(w["line"]), w["seq"])):
+        k = (w["line"], w["code"])
+        p = pos.get(k)
+        keyed.append((LINES.index(w["line"]), p[min(n[k], len(p) - 1)] if p else len(rows), w["seq"], w))
+        n[k] += 1
+    return renumber([dict(x[3], seq=i) for i, x in enumerate(sorted(keyed, key=lambda x: x[:3]))])
 
 
 def zensho_rows(rows: list) -> list:

@@ -28,6 +28,8 @@ DEFAULTS = {
     "gap_min": 30,
     "night_break": "20:00",
     "night_break_min": 120,
+    # 機械割：配合の機械の台数（製品マスタの「配合」にこの名前があれば、開始〜終了のあいだ使うとみなす）
+    "machines": {"MS": 2, "キャリア": 2},
     # 取り込み元のExcel（最初の1回だけ使う）
     "source_master_xls": "../Book1.xls",
     "source_weekly_xls": "../2022年10月週間予定.xls",

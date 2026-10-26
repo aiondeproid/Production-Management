@@ -34,7 +34,7 @@ function setDayDirty(v) {
 function computeLine(ln) {
   const st = dayState.settings;
   let prev = null;
-  return dayState.lines[ln].map((r) => {
+  return dayState.lines[ln].map((r, idx) => {
     const mpb = state.products[r.code]?.batch_min || 0;
     let s;
     if (r.start != null) s = r.start;
@@ -42,10 +42,48 @@ function computeLine(ln) {
     else s = ceil5(prev) + (r.gap == null ? st.gap : Number(r.gap));
     const e = s + (Number(r.batches) || 0) * mpb;
     prev = e;
-    return { ...r, line: ln, start_at: s, end_at: e, end5: ceil5(e), mpb };
+    return { ...r, line: ln, idx, start_at: s, end_at: e, end5: ceil5(e), mpb };
   });
 }
-const allTimed = () => LINES.flatMap(computeLine);
+const allTimed = () => LINES.flatMap((ln) => computeLine(ln));
+
+// ---------- 機械割（配合の機械。台数は config.json の machines） ----------
+// 配合にその機械の名前があれば、その行の開始〜終了のあいだ使うとみなす。
+// 早く始まる行から順に号機（①②）を割り当てる。同じラインが続けて使うときは、なるべく同じ号機にする。
+const unitNo = (i) => CIRCLED[i + 1] || String(i + 1); // 号機の番号（0 → ①）。CIRCLED は app.js
+const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// 配合の文字 → [{ name, n }]（「SC×2」のように書いてあれば n 台使う）
+function machinesOf(mix) {
+  const t = String(mix || "").normalize("NFKC");
+  return Object.keys(dayState.settings.machines).filter((m) => t.includes(m))
+    .map((m) => ({ name: m, n: Number(t.match(new RegExp(reEsc(m) + "\\s*[×xX*]\\s*(\\d)"))?.[1] || 1) }));
+}
+function machineAssign(timed) {
+  const cap = dayState.settings.machines;
+  const units = Object.fromEntries(Object.entries(cap).map(([m, n]) => [m, Array.from({ length: n }, () => ({ end: -Infinity, line: null, rows: [] }))]));
+  const short = Object.fromEntries(Object.keys(cap).map((m) => [m, []])); // 号機が空いていなかった行
+  const byRow = new Map(); // "ライン|idx" → { 機械: { units: [号機], short } }
+  const uses = timed.filter((r) => r.end_at > r.start_at) // 分/B が無い行は時間が分からないので除く
+    .flatMap((r) => machinesOf(state.products[r.code]?.mix).map((m) => ({ ...m, r })))
+    .sort((a, b) => a.r.start_at - b.r.start_at || LINES.indexOf(a.r.line) - LINES.indexOf(b.r.line));
+  for (const u of uses) {
+    const us = units[u.name];
+    const free = us.map((_, i) => i).filter((i) => us[i].end <= u.r.start_at + 1e-6)
+      .sort((i, j) => (us[j].line === u.r.line) - (us[i].line === u.r.line) || i - j);
+    const got = free.slice(0, u.n);
+    for (const i of got) { us[i].end = u.r.end_at; us[i].line = u.r.line; us[i].rows.push(u.r); }
+    const lack = u.n - got.length;
+    if (lack) {
+      const busy = uses.filter((x) => x.name === u.name && x.r !== u.r && x.r.start_at < u.r.end_at && u.r.start_at < x.r.end_at);
+      short[u.name].push({ r: u.r, lack, busy: [...new Set(busy.map((x) => x.r.line))] });
+    }
+    const k = `${u.r.line}|${u.r.idx}`;
+    if (!byRow.has(k)) byRow.set(k, {});
+    byRow.get(k)[u.name] = { units: got, lack };
+  }
+  return { units, short, byRow };
+}
+let dayMachines = { units: {}, short: {}, byRow: new Map() };
 
 // (ライン, コード, 何回目) のキー。分けた行を区別する（サーバーの day.keyed と同じ）
 function keyedRows(rows) {
@@ -161,6 +199,11 @@ function renderBanner() {
     const li = mm.map((m) => `<li>${m.line}ライン ${esc(state.products[m.code]?.name || m.code)}：週間予定 ${fmtB(m.weekly)}B ／ 作業予定 ${fmtB(m.day)}B</li>`).join("");
     msgs.push(`<div class="banner warn"><b>週間予定と B数が合いません</b><ul>${li}</ul><button id="dSync" class="edit-only">週間予定に合わせる</button></div>`);
   }
+  const lacks = Object.entries(dayMachines.short).flatMap(([m, list]) => list.map((o) =>
+    `<li>${esc(m)}：${o.r.line}ライン ${esc(state.products[o.r.code]?.name || o.r.code)} ${hm(o.r.start_at)}〜${hm(o.r.end5)}`
+    + `（同じ時間に ${o.busy.join("・")}ライン が使用中。${esc(m)}は${dayState.settings.machines[m]}台）</li>`));
+  if (lacks.length)
+    msgs.push(`<div class="banner warn"><b>配合の機械が足りません</b>（機械割の「不足」の行）。順番か開始時刻をずらしてください。<ul>${lacks.join("")}</ul></div>`);
   const noTime = [...new Set(LINES.flatMap((ln) => dayState.lines[ln]).filter((r) => !state.products[r.code]?.batch_min).map((r) => r.code))];
   if (noTime.length)
     msgs.push(`<div class="banner warn">分/B が未設定の製品があります（${noTime.map((c) => esc(`${c} ${state.products[c]?.name || ""}`)).join("、")}）。終了時刻が計算できないので、製品マスタで入れてください。</div>`);
@@ -170,20 +213,56 @@ function renderBanner() {
 }
 
 const TL_FROM = 6 * 60, TL_TO = 28 * 60; // タイムラインの範囲（6:00〜翌4:00）
-function timelineHtml(rows) {
-  const pct = (m) => `${(Math.min(Math.max(m, TL_FROM), TL_TO) - TL_FROM) / (TL_TO - TL_FROM) * 100}%`;
+const pct = (m) => `${(Math.min(Math.max(m, TL_FROM), TL_TO) - TL_FROM) / (TL_TO - TL_FROM) * 100}%`;
+function tlBase() {
   const ticks = [];
   for (let h = 6; h <= 28; h += 2) ticks.push(`<span class="tick" style="left:${pct(h * 60)}">${h}</span>`);
-  const night = `<span class="nightmark" style="left:${pct(dayState.settings.night)}" title="夜の休止 ${hm(dayState.settings.night)}"></span>`;
+  return ticks.join("") + `<span class="nightmark" style="left:${pct(dayState.settings.night)}" title="夜の休止 ${hm(dayState.settings.night)}"></span>`;
+}
+const barPos = (r) => `left:${pct(r.start_at)};width:calc(${pct(r.end_at)} - ${pct(r.start_at)})`;
+function timelineHtml(rows) {
   const codes = [...new Set(rows.map((r) => r.code))];
-  const bars = rows.map((r) => `<span class="bar c${codes.indexOf(r.code) % 6}" style="left:${pct(r.start_at)};width:calc(${pct(r.end_at)} - ${pct(r.start_at)})"
+  const bars = rows.map((r) => `<span class="bar c${codes.indexOf(r.code) % 6}" style="${barPos(r)}"
       title="${esc(state.products[r.code]?.name || r.code)} ${fmtB(r.batches)}B ${hm(r.start_at)}〜${hm(r.end5)}"></span>`).join("");
-  return `<div class="timeline">${ticks.join("")}${night}${bars}</div>`;
+  return `<div class="timeline">${tlBase()}${bars}</div>`;
+}
+
+// 機械割：号機ごとに、どのラインがいつ使うか。号機が空いていなかった行は「不足」の段に赤で出す
+function machinesHtml() {
+  const names = Object.keys(dayMachines.units);
+  const used = names.filter((m) => dayMachines.units[m].some((u) => u.rows.length));
+  if (!used.length) return "";
+  const bar = (r, cls) => `<span class="bar ln${LINES.indexOf(r.line)} ${cls}" style="${barPos(r)}"
+      title="${r.line}ライン ${esc(state.products[r.code]?.name || r.code)} ${hm(r.start_at)}〜${hm(r.end5)}">${r.line}</span>`;
+  const rows = used.flatMap((m) => [
+    ...dayMachines.units[m].map((u, i) => [`${m}${unitNo(i)}`, u.rows.map((r) => bar(r, "")).join(""), ""]),
+    ...(dayMachines.short[m].length ? [[`${m} 不足`, dayMachines.short[m].map((o) => bar(o.r, "lack")).join(""), "lack"]] : []),
+  ]);
+  const cap = names.map((m) => `${esc(m)} ${dayState.settings.machines[m]}台`).join("・");
+  return `<div class="card dline">
+    <div class="dlinehead"><h3>機械割</h3><span class="sub">配合の機械（${cap}）。バーの文字はライン。製品マスタの「配合」から割り当てます</span></div>
+    ${rows.map(([label, bars, cls], i) => `<div class="mrow ${cls}"><span class="mname">${esc(label)}</span>
+      <div class="timeline mtl ${i === rows.length - 1 ? "" : "nolabel"}">${tlBase()}${bars}</div></div>`).join("")}
+  </div>`;
+}
+
+// 配合の欄：割り当てた号機を「MS①」のように出し、残りの文字（台数を管理しない機械など）はそのまま
+function mixHtml(mix, r) {
+  const names = Object.keys(dayState.settings.machines);
+  const use = dayMachines.byRow.get(`${r.line}|${r.idx}`) || {};
+  const tags = machinesOf(mix).map(({ name }) => {
+    const u = use[name];
+    const no = u ? u.units.map(unitNo).join("") : "";
+    const lack = u?.lack ? "×" : "";
+    return `<span class="mtag ${lack ? "lack" : ""}" title="${u ? (lack ? `${name}が足りません` : `${name} ${no}`) : "時間が分からないので割り当てていません"}">${esc(name)}${no}${lack}</span>`;
+  });
+  const rest = String(mix || "").normalize("NFKC").split(/[、,・\s]+/).filter((t) => t && !names.some((m) => t.includes(m)));
+  return tags.join("") + esc(rest.join("、"));
 }
 
 // 画面の表の列の幅（px）。項目はサーバーの day.COLUMNS の順にすべて出す
 const COL_WIDTH = {
-  code: 64, name: 170, batches: 62, shot: 50, batch_min: 50, mix: 100, gap: 58, start: 66, end: 52, cs: 62,
+  code: 64, name: 170, batches: 62, shot: 50, batch_min: 50, mix: 130, gap: 58, start: 66, end: 52, cs: 62,
   mold: 140, plate: 70, form_g: 50, meat: 56, pre_note: 140, fry: 42, pre_color: 110, pre_regen: 70, wheat: 40,
   egg: 36, milk: 36, caution: 130, wash: 100, spec: 190, packaging: 70, post_regen: 74, kenkin: 52,
 };
@@ -201,6 +280,7 @@ function cellHtml(key, r, i, p, dis) {
       : `<input class="gap" type="number" step="5" min="0" value="${r.gap ?? ""}" placeholder="${dayState.settings.gap}" title="前の製品の終了から開始までの分（空なら${dayState.settings.gap}分）" ${dis}>`;
     case "start": return `<input class="start ${auto ? "auto" : "fixed"}" value="${hm(r.start_at)}" title="${auto ? "自動で計算（時刻を入れると固定）" : "固定した開始時刻（空にすると自動に戻る）"}" ${dis}>`;
     case "end": return hm(r.end5);
+    case "mix": return mixHtml(p.mix, r);
     case "cs": return p.yield_per_b ? String(Math.round(Number(r.batches) * p.yield_per_b)) : "";
     default: return esc(p[key] ?? "");
   }
@@ -210,6 +290,8 @@ const MARK_KEYS = new Set(["fry", "wheat", "egg", "milk", "meat", "pre_regen", "
 
 function renderLines() {
   const { keys, removed } = dayChanges();
+  dayMachines = machineAssign(allTimed());
+  $("#dMachines").innerHTML = machinesHtml();
   const dis = state.editable ? "" : "disabled";
   const cols = dayState.columns.map((c) => c.key);
   const printed = new Set(dayState.printCols);
@@ -305,7 +387,7 @@ function bindLines() {
       const list = dayState.lines[ln];
       const other = list.find((x, i) => i !== idx && x.code === r.code);
       if (other) other.batches = fmtB(Number(other.batches) + Number(r.batches));
-      else if (!confirm(`${state.products[r.code]?.name || r.code} を消すと、週間予定と B数が合わなくなります。消しますか？`)) return;
+      else if (!confirm(`${state.products[r.code]?.name || r.code} を消すと、保存したときに週間予定からも ${fmtB(r.batches)}B 減ります。消しますか？`)) return;
       list.splice(idx, 1);
       dayEdited();
     };
@@ -332,11 +414,21 @@ function flatDayRows() {
   return LINES.flatMap((ln) => dayState.lines[ln].map((r) => ({ line: ln, code: r.code, batches: Number(r.batches), gap: r.gap, start: r.start })));
 }
 async function saveDay() {
+  const wk = mondayOf(dayState.date);
+  if (state.dirty && state.week?.monday === wk) {
+    toast("週間予定に保存していない変更があります。作業予定の B数・順番は週間予定にも反映するので、先に週間予定を保存してください", 6000);
+    return false;
+  }
   const mm = dayMismatch();
   if (mm.length && !confirm(`週間予定と B数が合わない製品が ${mm.length} 件あります。このまま保存しますか？`)) return false;
   const r = await api("/api/day", { date: dayState.date, user: userName(), rows: flatDayRows() });
   await loadDay(dayState.date, true);
-  toast(r.changes.length ? `保存しました（${r.changes.length}件の変更）` : "保存しました");
+  if (r.weekly_changes.length) {
+    if (state.week?.monday === wk) await loadWeek(wk, true);
+    await refreshWeeks();
+  }
+  toast((r.changes.length ? `保存しました（${r.changes.length}件の変更）` : "保存しました")
+    + (r.weekly_changes.length ? `\n週間予定にも反映しました（${r.weekly_changes.length}件）` : ""));
   return true;
 }
 async function issueDay(kind) {
