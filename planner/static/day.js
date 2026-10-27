@@ -503,16 +503,78 @@ function zenshoHtml() {
     ${removed.length ? `<div class="zremoved"><b>■ 前回の発行から削除した製品</b>${removed.map((o) => `<div>${o.line}ライン ${esc(state.products[o.code]?.name || o.code)} ${fmtB(o.batches)}B</div>`).join("")}</div>` : ""}
   </div>`;
 }
-function openZensho() {
-  $("#zSheet").innerHTML = zenshoHtml();
-  $("#zenshoDlg").showModal();
+// ---------- 成型予定表（表示・印刷） ----------
+// 発行する Excel（day_out.build_seikei）と同じ形。項目は「印刷する項目…」で選んだもの。
+// 赤字＝前回の発行から B数か開始時刻が変わった行（画面の表と同じ）
+const WRAP_KEYS = new Set(["name", "mix", "mold", "pre_note", "pre_color", "caution", "wash", "spec"]);
+function seikeiValue(key, r, i, p) {
+  switch (key) {
+    case "code": return esc(r.code);
+    case "name": return esc(p.name || r.code);
+    case "batches": return fmtB(r.batches);
+    case "batch_min": return p.batch_min ? hm(p.batch_min) : "";
+    case "gap": return i === 0 || r.start != null ? "" : String(r.gap ?? dayState.settings.gap); // 朝一・時刻を固定した行は切替なし
+    case "start": return hm(r.start_at);
+    case "end": return hm(r.end5);
+    case "cs": return p.yield_per_b ? String(Math.round(Number(r.batches) * p.yield_per_b)) : "";
+    default: return esc(p[key] ?? "");
+  }
 }
-$("#dShowZensho").onclick = openZensho;
-$("#zClose").onclick = () => $("#zenshoDlg").close();
-$("#zPrint").onclick = () => {
-  const dlg = $("#zenshoDlg");
+function seikeiHtml() {
+  const { keys, removed } = dayChanges();
+  const cols = dayState.columns.filter((c) => dayState.printCols.includes(c.key));
+  const total = cols.reduce((a, c) => a + c.width, 0);
+  const colgroup = `<colgroup>${cols.map((c) => `<col style="width:${(c.width / total * 100).toFixed(2)}%">`).join("")}</colgroup>`;
+  const head = `<thead><tr>${cols.map((c) => `<th>${esc(c.label)}</th>`).join("")}</tr></thead>`;
+  const d = new Date(dayState.date + "T00:00:00");
+  const rev = dayState.data.revs.seikei;
+  const changed = dayState.data.snapshots?.seikei && (keys.size || removed.length);
+  const revText = rev ? `${revLabel(rev.rev)}（${md(rev.issued_at.slice(0, 10))} 発行）${changed ? "・発行後の変更あり" : ""}` : "未発行";
+  const tables = LINES.map((ln) => {
+    const rows = computeLine(ln);
+    const keyOf = [...keyedRows(rows).entries()].reduce((m, [k, r]) => m.set(r, k), new Map());
+    const span = rows.length ? `計 ${fmtB(rows.reduce((a, r) => a + (Number(r.batches) || 0), 0))}B　${hm(rows[0].start_at)}～${hm(rows[rows.length - 1].end5)}` : "製造なし";
+    const body = Array.from({ length: Math.max(rows.length, 3) }, (_, i) => {
+      const r = rows[i];
+      if (!r) return `<tr>${"<td></td>".repeat(cols.length)}</tr>`;
+      const p = state.products[r.code] || {};
+      const red = keys.has(keyOf.get(r)) ? "red" : "";
+      return `<tr>${cols.map((c) => `<td class="${red} ${WRAP_KEYS.has(c.key) ? "name" : ""}">${seikeiValue(c.key, r, i, p)}</td>`).join("")}</tr>`;
+    }).join("");
+    return `<div class="sline"><b>${ln}ライン</b><span>${span}</span></div><table>${colgroup}${head}<tbody>${body}</tbody></table>`;
+  }).join("");
+  return `<div class="zsheet ssheet">
+    <div class="zhead"><b class="sdate">${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日（${WEEK[(d.getDay() + 6) % 7]}）</b>
+      <h1>成　型　予　定　表</h1><b>${esc(revText)}</b></div>
+    <div class="zhead"><span></span><span class="rednote">（変更箇所　赤色）${dayState.dirty ? "　※保存していない変更を含む" : ""}</span></div>
+    ${tables}
+    ${removed.length ? `<div class="zremoved"><b>■ 前回の発行から消えた行</b>${removed.map((r) => `<div>${esc(r)}</div>`).join("")}</div>` : ""}
+  </div>`;
+}
+
+// ---------- 表の表示と印刷（前処理製造予定表・成型予定表で共通） ----------
+const SHEETS = {
+  zensho: { html: zenshoHtml, paper: "A4縦", hint: "赤字＝前回の発行から B数が変わった製品。" },
+  seikei: { html: seikeiHtml, paper: "A3横", hint: "赤字＝前回の発行から B数か開始時刻が変わった行。項目は「印刷する項目…」で選んだものです。" },
+};
+let sheetKind = null;
+function openSheet(kind) {
+  const s = SHEETS[kind];
+  sheetKind = kind;
+  $("#sheetTitle").textContent = KIND_TITLE[kind];
+  $("#sheetHint").textContent = `今の作業予定（保存していない変更も含む）から作っています。${s.hint}印刷は ${s.paper} です。`;
+  $("#sheetPrint").title = `${s.paper}で印刷します`;
+  $("#sheetDlg").classList.toggle("xwide", kind === "seikei");
+  $("#sheetBody").innerHTML = s.html();
+  $("#sheetDlg").showModal();
+}
+$("#dShowZensho").onclick = () => openSheet("zensho");
+$("#dShowSeikei").onclick = () => openSheet("seikei");
+$("#sheetClose").onclick = () => $("#sheetDlg").close();
+$("#sheetPrint").onclick = () => {
+  const dlg = $("#sheetDlg");
   dlg.close(); // 開いたままだと印刷に写るので、閉じて印刷してから開き直す
-  printHtml("zensho", zenshoHtml());
+  printHtml(sheetKind, SHEETS[sheetKind].html());
   dlg.showModal();
 };
 

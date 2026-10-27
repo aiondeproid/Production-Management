@@ -540,7 +540,7 @@ function printWeek() {
     </table>
     ${removed.length ? `<div class="premoved"><b>■ 前回の発行から削除した明細</b>${removed.map((r) => `<div>${esc(r)}</div>`).join("")}</div>` : ""}`);
 }
-// 印刷用の内容を #printArea に入れて印刷する。kind で用紙を変える（week＝A3縦、zensho＝A4縦。style.css の @page）
+// 印刷用の内容を #printArea に入れて印刷する。kind で用紙を変える（week＝A3縦、zensho＝A4縦、seikei＝A3横。style.css の @page）
 function printHtml(kind, html) {
   $("#printArea").className = kind;
   $("#printArea").innerHTML = html;

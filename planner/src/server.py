@@ -286,7 +286,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({
                     "monday": q["monday"], "days": day_list(con, q["monday"]), "settings": SETTINGS.as_dict(),
                     "day_output_dir": CFG["day_output_dir"],
-                    "columns": [{"key": k, "label": label, "default": d} for k, label, _, d in day.COLUMNS],
+                    "columns": [{"key": k, "label": label, "width": w, "default": d} for k, label, w, d in day.COLUMNS],
                     "print_cols": day.print_columns(con),
                 })
             if url.path == "/api/day":

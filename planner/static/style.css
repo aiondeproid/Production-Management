@@ -186,6 +186,8 @@ table.daytable { border-collapse: separate; border-spacing: 0; font-size: 13px; 
   @page { size: A3 portrait; margin: 8mm; }
   @page zensho { size: A4 portrait; margin: 10mm; }
   #printArea.zensho { page: zensho; }
+  @page seikei { size: A3 landscape; margin: 8mm; }
+  #printArea.seikei { page: seikei; }
   body.printing { background: #fff; color: #000; }
   body.printing > *:not(#printArea) { display: none !important; }
   body.printing #printArea { display: block; font-family: "Meiryo UI", "Yu Gothic UI", sans-serif; color: #000; font-size: 8.5pt; }
@@ -234,3 +236,16 @@ table.daytable { border-collapse: separate; border-spacing: 0; font-size: 13px; 
   body.printing #printArea.zensho .zsheet thead th { font-size: 7.5pt; }
   body.printing #printArea.zensho .zsheet thead tr.zline th.ln { font-size: 10.5pt; }
 }
+
+/* ---------- 成型予定表（.zsheet の上に足す） ---------- */
+.dlg.wide.xwide { max-width: 96vw; width: 96vw; }
+.paper .ssheet { min-width: 1400px; }
+.ssheet { font-size: 9.5pt; }
+.ssheet .zhead h1 { font-size: 18pt; }
+.ssheet .sdate { font-size: 14pt; }
+.ssheet .sline { display: flex; gap: 4mm; align-items: baseline; margin: 2mm 0 1mm; }
+.ssheet .sline b { background: #d9e1f2; padding: 0 2mm; font-size: 11pt; }
+.ssheet .sline span { color: #5d6678; font-size: 9pt; }
+.ssheet thead th { white-space: normal; font-size: 8pt; }
+.ssheet td { height: 8mm; line-height: 1.2; }
+@media print { body.printing #printArea.seikei .ssheet { font-size: 9pt; } }
