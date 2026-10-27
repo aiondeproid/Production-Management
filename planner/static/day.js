@@ -453,6 +453,69 @@ async function redraftDay() {
   dayEdited();
   toast("週間予定から案を作り直しました（まだ保存していません）");
 }
+// ---------- 前処理製造予定表（表示・印刷） ----------
+// 発行する Excel（day_out.build_zensho）と同じ形。今の画面の作業予定（保存していない変更も含む）から作る。
+// 赤字＝前回の発行から B数が変わった製品（サーバーの day.diff の zensho と同じ比べ方）
+const ZENSHO_HEADS = [["コードNO", 9], ["後処理<br>番号", 7], ["金検", 7], ["製　品　名", 29], ["バッチ", 8], ["１Ｂの<br>投入袋数", 9],
+  ["前処理再生<br>番号", 10], ["製品ｺｰﾄﾞ", 9], ["製品名", 20], ["日付", 8], ["総投入Ｋ", 9]];
+// ラインごとに、製品の並び順で B数を合計する（分けた行は1行にまとめる。サーバーの day.zensho_rows と同じ）
+function zenshoRows(rows) {
+  const out = new Map();
+  for (const r of rows) {
+    const k = `${r.line}|${r.code}`;
+    if (!out.has(k)) out.set(k, { line: r.line, code: r.code, batches: 0 });
+    out.get(k).batches += Number(r.batches) || 0;
+  }
+  return [...out.values()];
+}
+function zenshoHtml() {
+  const rows = zenshoRows(allTimed());
+  const snap = dayState.data.snapshots?.zensho;
+  const old = snap ? new Map(zenshoRows(snap).map((r) => [`${r.line}|${r.code}`, r])) : null;
+  const isRed = (r) => old && !(Math.abs((old.get(`${r.line}|${r.code}`)?.batches ?? -1) - r.batches) < 1e-6);
+  const removed = old ? [...old.values()].filter((o) => !rows.some((r) => r.line === o.line && r.code === o.code)) : [];
+  const d = new Date(dayState.date + "T00:00:00"), now = new Date();
+  const rev = dayState.data.revs.zensho;
+  const changed = old && (removed.length || rows.some(isRed));
+  const revText = rev ? `${revLabel(rev.rev)}（${md(rev.issued_at.slice(0, 10))} 発行）${changed ? "・発行後の変更あり" : ""}` : "未発行";
+  const total = ZENSHO_HEADS.reduce((a, [, w]) => a + w, 0);
+  const colgroup = `<colgroup>${ZENSHO_HEADS.map(([, w]) => `<col style="width:${(w / total * 100).toFixed(2)}%">`).join("")}</colgroup>`;
+  const tables = LINES.map((ln) => {
+    const list = rows.filter((r) => r.line === ln);
+    const body = Array.from({ length: Math.max(list.length + 1, 4) }, (_, i) => {
+      const r = list[i];
+      if (!r) return `<tr>${"<td></td>".repeat(ZENSHO_HEADS.length)}</tr>`;
+      const p = state.products[r.code] || {};
+      const cls = isRed(r) ? "red" : "";
+      const vals = [esc(r.code), esc(p.post_regen ?? ""), esc(p.kenkin ?? ""), esc(p.name || r.code), fmtB(r.batches)];
+      return `<tr>${ZENSHO_HEADS.map((_, c) => `<td class="${cls} ${c === 3 ? "name" : c === 0 || c === 4 ? "num" : ""}">${vals[c] ?? ""}</td>`).join("")}</tr>`;
+    }).join("");
+    return `<table>${colgroup}<thead>
+      <tr class="zline"><th class="ln">${ln}ライン</th><th>後処理</th><th>前処理</th><th></th><th></th><th></th><th>前処理再生</th><th></th><th></th><th></th><th></th></tr>
+      <tr>${ZENSHO_HEADS.map(([h]) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`;
+  }).join("");
+  return `<div class="zsheet">
+    <div class="zhead"><h1>前処理工程　　製造予定表</h1><b>${esc(revText)}</b></div>
+    <div class="zhead"><span>${now.getMonth() + 1}／${now.getDate()}　${now.getHours() < 12 ? "ＡＭ" : "ＰＭ"}時点の計画です。よろしくお願いします。</span>
+      <span class="rednote">（変更箇所　赤色）${dayState.dirty ? "　※保存していない変更を含む" : ""}</span></div>
+    <div class="zdate">${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日（${WEEK[(d.getDay() + 6) % 7]}）</div>
+    ${tables}
+    ${removed.length ? `<div class="zremoved"><b>■ 前回の発行から削除した製品</b>${removed.map((o) => `<div>${o.line}ライン ${esc(state.products[o.code]?.name || o.code)} ${fmtB(o.batches)}B</div>`).join("")}</div>` : ""}
+  </div>`;
+}
+function openZensho() {
+  $("#zSheet").innerHTML = zenshoHtml();
+  $("#zenshoDlg").showModal();
+}
+$("#dShowZensho").onclick = openZensho;
+$("#zClose").onclick = () => $("#zenshoDlg").close();
+$("#zPrint").onclick = () => {
+  const dlg = $("#zenshoDlg");
+  dlg.close(); // 開いたままだと印刷に写るので、閉じて印刷してから開き直す
+  printHtml("zensho", zenshoHtml());
+  dlg.showModal();
+};
+
 // ---------- 印刷する項目 ----------
 function openPrintCols() {
   const dlg = $("#printDlg");

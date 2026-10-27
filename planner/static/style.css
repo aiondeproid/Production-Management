@@ -179,3 +179,58 @@ table.daytable { border-collapse: separate; border-spacing: 0; font-size: 13px; 
 .drow.over td { box-shadow: inset 0 2px 0 var(--accent); }
 
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 8px; z-index: 10; max-width: 90vw; white-space: pre-wrap; }
+
+/* ---------- 週間予定の印刷（A3縦） ---------- */
+#printArea { display: none; }
+@media print {
+  @page { size: A3 portrait; margin: 8mm; }
+  @page zensho { size: A4 portrait; margin: 10mm; }
+  #printArea.zensho { page: zensho; }
+  body.printing { background: #fff; color: #000; }
+  body.printing > *:not(#printArea) { display: none !important; }
+  body.printing #printArea { display: block; font-family: "Meiryo UI", "Yu Gothic UI", sans-serif; color: #000; font-size: 8.5pt; }
+  #printArea .ptop { display: flex; justify-content: space-between; font-size: 8pt; }
+  #printArea h1 { text-align: center; font-size: 17pt; margin: 2mm 0 1mm; }
+  #printArea h1 small { font-size: 9pt; font-weight: normal; color: #c00000; margin-left: 6mm; }
+  #printArea .psub { display: flex; gap: 10mm; align-items: baseline; font-size: 11pt; margin-bottom: 2mm; }
+  #printArea .psub b:last-child { margin-left: auto; }
+  #printArea .ptable { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  #printArea .ptable th, #printArea .ptable td { border: 0.5pt solid #808080; padding: 0.5mm 0.6mm; height: 5mm; vertical-align: middle; overflow: hidden; overflow-wrap: anywhere; }
+  #printArea .ptable td { text-align: center; line-height: 1.2; }
+  #printArea .ptable td.n { white-space: nowrap; font-size: 8pt; letter-spacing: -0.2pt; }
+  #printArea .ptable thead th { white-space: nowrap; font-size: 8pt; }
+  #printArea .ptable thead th { background: #e8ecf3; font-weight: bold; }
+  #printArea .ptable .pdate { font-size: 11pt; background: #fff; white-space: nowrap; }
+  #printArea .ptable .pdate small { font-size: 9pt; }
+  #printArea .ptable tbody { break-inside: avoid; }
+  #printArea .ptable tbody.sat td, #printArea .ptable tbody.sat .pdate { background: #eef4ff; }
+  #printArea .ptable tbody.sat .pdate { color: #1f4e9e; }
+  #printArea .ptable td.red { color: #c00000; font-weight: bold; }
+  #printArea .ptable td.sum { color: #5d6678; font-size: 7.5pt; text-align: left; }
+  #printArea .premoved { margin-top: 3mm; color: #c00000; }
+  #printArea * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+/* ---------- 前処理製造予定表（画面の表示と印刷で共通。紙と同じ白地に黒） ---------- */
+.dlg.wide { max-width: 980px; }
+.paper { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 16px 20px; max-height: 72vh; overflow: auto; }
+.zsheet { color: #000; background: #fff; font-family: "Meiryo UI", "Yu Gothic UI", sans-serif; font-size: 10.5pt; }
+.zsheet .zhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8mm; margin-bottom: 1mm; }
+.zsheet h1 { font-size: 16pt; margin: 0; }
+.zsheet .rednote { color: #c00000; font-size: 9pt; }
+.zsheet .zdate { text-align: center; font-size: 14pt; font-weight: bold; margin: 2mm 0 3mm; }
+.zsheet table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 4mm; break-inside: avoid; }
+.zsheet th, .zsheet td { border: 0.5pt solid #808080; height: 6.5mm; padding: 0.5mm 1mm; text-align: center; vertical-align: middle; overflow: hidden; }
+.zsheet thead th { background: #e8ecf3; font-size: 8.5pt; line-height: 1.15; white-space: nowrap; padding: 0.5mm 0.3mm; }
+.zsheet thead tr.zline th { border: none; background: none; height: auto; font-size: 8pt; font-weight: normal; text-align: center; }
+.zsheet thead tr.zline th.ln { background: #d9e1f2; font-size: 11pt; font-weight: bold; white-space: nowrap; }
+.zsheet td.name { text-align: left; }
+.zsheet td.num { white-space: nowrap; }
+.zsheet td.red { color: #c00000; font-weight: bold; }
+.zsheet .zremoved { color: #c00000; margin-top: 2mm; }
+.zsheet * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+@media print {
+  body.printing #printArea.zensho .zsheet { font-size: 9.5pt; }
+  body.printing #printArea.zensho .zsheet thead th { font-size: 7.5pt; }
+  body.printing #printArea.zensho .zsheet thead tr.zline th.ln { font-size: 10.5pt; }
+}

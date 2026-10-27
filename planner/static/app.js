@@ -92,6 +92,7 @@ async function loadState() {
   state.weeks = s.weeks;
   state.today = s.today;
   state.outputDir = s.output_dir;
+  state.distribution = s.distribution;
   applyLock(s.lock);
   renderWeekList();
 }
@@ -479,6 +480,75 @@ async function issue() {
   await refreshWeeks();
   toast((r.note ? r.note + "\n" : `${revLabel(r.rev)} を発行しました（変更 ${r.changes.length}件）\n`) + r.path, 7000);
 }
+// ---------- 印刷（A3縦） ----------
+// 配布用Excelと同じ並び（日付 × A〜Dライン［B・品名・コード・数量］＋タレ＋別添タレ）で、今の画面の内容を印刷する。
+// 赤字＝前回の発行から変わった明細（画面と同じ）
+function printWeek() {
+  const w = state.week;
+  const { keys, removed } = changes();
+  // 数字の列（n）は折り返さない。赤字＝前回の発行から変わった明細
+  const td = (v, k, num) => `<td class="${num ? "n" : ""} ${k && keys.has(k) ? "red" : ""}">${v}</td>`;
+  const m = new Date(w.monday + "T00:00:00");
+  const rev = w.rev ? `${revLabel(w.rev.rev)}（${md(w.rev.issued_at.slice(0, 10))} 発行）` : "未発行";
+  const now = new Date();
+  const body = w.dates.map((d, di) => {
+    const per = Object.fromEntries(LINES.map((ln) => [ln, state.cells[`${d}|${ln}`].filter((e) => e.code && Number(e.batches) > 0)]));
+    const tare = buildTare(d).filter((t) => (t.code || t.name) && Number(t.kg) > 0);
+    const bet = state.betten[d].filter((b) => b.code && Number(b.kg) > 0);
+    const n = Math.max(2, tare.length + 1, bet.length, ...LINES.map((ln) => per[ln].length + 1)); // 最後の1行は合計
+    const dd = new Date(d + "T00:00:00");
+    const rows = [];
+    for (let i = 0; i < n; i++) {
+      const last = i === n - 1;
+      let tr = i === 0 ? `<th class="pdate" rowspan="${n}">${dd.getDate()}<br><small>${WEEK[di]}</small></th>` : "";
+      for (const ln of LINES) {
+        const e = per[ln][i];
+        if (e) {
+          const k = `${d}|${ln}|${e.code}`;
+          tr += td(fmtB(e.batches), k, 1) + td(esc(state.products[e.code]?.name || e.code), k) + td(esc(e.code), k, 1) + td(csOf(e.code, e.batches)?.toLocaleString() ?? "", k, 1);
+        } else if (last && per[ln].length) {
+          tr += `<td class="sum" colspan="4">計 ${fmtB(per[ln].reduce((a, x) => a + Number(x.batches), 0))}B</td>`;
+        } else tr += "<td></td><td></td><td></td><td></td>";
+      }
+      const t = tare[i];
+      if (t) tr += td(esc(tareName(t)), tareKey(t)) + td(fmtKg(t.kg), tareKey(t), 1);
+      else if (last && tare.length) tr += `<td class="sum" colspan="2">計 ${fmtKg(tare.reduce((a, x) => a + Number(x.kg), 0))}</td>`;
+      else tr += "<td></td><td></td>";
+      const b = bet[i];
+      if (b) {
+        const k = betKey(d, b), bags = betBags(b);
+        tr += td(`${esc(b.code)} →${esc(betTarget(b.code))}`, k) + td(fmtKg(b.kg), k, 1) + td(bags ? bags.toLocaleString() + "袋" : "", k, 1);
+      } else tr += "<td></td><td></td><td></td>";
+      rows.push(`<tr>${tr}</tr>`);
+    }
+    return `<tbody class="${di === 5 ? "sat" : ""}">${rows.join("")}</tbody>`;
+  }).join("");
+  // 列の幅（mm の目安。A3縦の印刷幅 約281mm に合わせる）
+  const widths = [8, ...LINES.flatMap(() => [9, 23, 9, 9]), 18, 11, 19, 12, 12];
+  const total = widths.reduce((a, x) => a + x, 0);
+  printHtml("week", `
+    <div class="ptop"><span>${esc(state.distribution || "")}</span><span>印刷 ${now.getMonth() + 1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2, "0")}${state.dirty ? "（未保存の変更を含む）" : ""}</span></div>
+    <h1>週　間　製　造　予　定　表<small>（変更箇所　赤色）</small></h1>
+    <div class="psub"><b>${m.getMonth() + 1}月　『　第　${(m.getDate() - 1) / 7 + 1 | 0}　週　』</b><span>${md(w.dates[0])}　～　${md(w.dates[w.dates.length - 1])}</span><b>${esc(rev)}</b></div>
+    <table class="ptable">
+      <colgroup>${widths.map((x) => `<col style="width:${(x / total * 100).toFixed(2)}%">`).join("")}</colgroup>
+      <thead>
+        <tr><th rowspan="2">日付</th>${LINES.map((ln) => `<th colspan="4">${ln}ライン</th>`).join("")}<th colspan="2">タレ</th><th colspan="3">別添タレ</th></tr>
+        <tr>${LINES.map(() => "<th>B</th><th>品　名</th><th>コード</th><th>数量</th>").join("")}<th>品　名</th><th>数量</th><th>品名（→製品）</th><th>タレ</th><th>包装機</th></tr>
+      </thead>
+      ${body}
+    </table>
+    ${removed.length ? `<div class="premoved"><b>■ 前回の発行から削除した明細</b>${removed.map((r) => `<div>${esc(r)}</div>`).join("")}</div>` : ""}`);
+}
+// 印刷用の内容を #printArea に入れて印刷する。kind で用紙を変える（week＝A3縦、zensho＝A4縦。style.css の @page）
+function printHtml(kind, html) {
+  $("#printArea").className = kind;
+  $("#printArea").innerHTML = html;
+  document.body.classList.add("printing");
+  window.print();
+}
+window.addEventListener("afterprint", () => document.body.classList.remove("printing"));
+$("#print").onclick = printWeek;
 $("#save").onclick = () => save().catch((e) => toast("保存できませんでした：" + e.message));
 $("#issue").onclick = () => issue().catch((e) => toast("発行できませんでした：" + e.message, 7000));
 $("#prev").onclick = () => loadWeek(addWeeks(state.week.monday, -1));
