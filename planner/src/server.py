@@ -244,6 +244,46 @@ def day_list(con, monday):
     return out
 
 
+# ---------- 後処理日報・洗浄記録 ----------
+# 行ごとに書き込む欄 → 変更履歴に出す名前（✓の欄は "✓" か ""）
+POST_FIELDS = {
+    "actual": "出来高", "limited": "数量限定", "wash": "洗浄", "wash_mix": "洗浄（配合）", "wash_form": "洗浄（成型）",
+    "wash_time": "洗浄時刻", "wash_by": "担当者", "checked_by": "確認者",
+}
+EXTRA_MAX = 4  # 後処理日報の「その他」の行数（用紙の行数）
+
+
+def clean_post(raw: dict) -> dict:
+    s = lambda v: db.norm(v)[:60]
+    rows = {}
+    for k, r in (raw.get("rows") or {}).items():
+        if len(str(k).split("|")) != 3 or not isinstance(r, dict):
+            continue
+        r = {f: s(r.get(f)) for f in POST_FIELDS if s(r.get(f))}
+        if r:
+            rows[str(k)] = r
+    extra = []
+    for x in (raw.get("extra") or [])[:EXTRA_MAX]:
+        x = {"code": s(x.get("code")), "plan": s(x.get("plan")), "actual": s(x.get("actual"))}
+        if any(x.values()):
+            extra.append(x)
+    return {"rows": rows, "extra": extra, "qc": s(raw.get("qc"))}
+
+
+def load_post(con, date: str) -> dict:
+    r = con.execute("SELECT data, updated_at, user FROM post_records WHERE date=?", (date,)).fetchone()
+    data = clean_post(json.loads(r["data"])) if r else clean_post({})
+    return {"data": data, "updated_at": r["updated_at"] if r else None, "user": r["user"] if r else None}
+
+
+def post_state(con, date: str) -> dict:
+    """後処理の画面に出す内容：作業予定の行（時刻付き）と書き込んだ内容"""
+    products = db.products(con)
+    rows, is_draft = day.rows_for(con, date, products, SETTINGS)
+    return {"date": date, "rows": day.compute(rows, products, SETTINGS), "draft": is_draft,
+            "extra_max": EXTRA_MAX, **load_post(con, date)}
+
+
 # ---------- HTTP ----------
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -291,6 +331,8 @@ class Handler(BaseHTTPRequestHandler):
                 })
             if url.path == "/api/day":
                 return self.send_json(day_state(con, q["date"]))
+            if url.path == "/api/post":
+                return self.send_json(post_state(con, q["date"]))
             if url.path == "/api/changelog":
                 sql, args = "SELECT * FROM changelog", ()
                 if q.get("week"):
@@ -327,6 +369,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.save_day(con, data)
             if path == "/api/day/issue":
                 return self.issue_day(con, data)
+            if path == "/api/post":
+                return self.save_post(con, data)
             if path == "/api/day/print_cols":
                 # 成型予定表に印刷する項目を保存する（みんなで共通）
                 cols = [k for k in day.COLUMN_KEYS if k in (data.get("cols") or [])]
@@ -461,6 +505,36 @@ class Handler(BaseHTTPRequestHandler):
             )
         con.commit()
         self.send_json({"ok": True, "changes": changes, "weekly_changes": weekly_changes})
+
+    def save_post(self, con, data):
+        """後処理日報・洗浄記録に書き込んだ内容を保存する（変えた欄を変更履歴に残す）"""
+        date, user = data["date"], (data.get("user") or "").strip() or lock.ME["user"]
+        new = clean_post(data.get("data") or {})
+        old = load_post(con, date)["data"]
+        products = db.products(con)
+        name = lambda c: (products.get(c) or {}).get("name") or c
+        changes = []
+        for k in sorted(set(old["rows"]) | set(new["rows"])):
+            ln, code, _ = k.split("|")
+            o, n = old["rows"].get(k, {}), new["rows"].get(k, {})
+            for f, label in POST_FIELDS.items():
+                if (o.get(f) or "") != (n.get(f) or ""):
+                    changes.append(f"{ln}ライン {name(code)} {label}：{o.get(f) or '（空）'} → {n.get(f) or '（空）'}")
+        if old["extra"] != new["extra"]:
+            changes.append("その他：" + ("、".join(f"{name(x['code'])} {x['plan']}/{x['actual']}" for x in new["extra"]) or "（なし）"))
+        if old["qc"] != new["qc"]:
+            changes.append(f"品管確認：{old['qc'] or '（空）'} → {new['qc'] or '（空）'}")
+        con.execute(
+            "INSERT OR REPLACE INTO post_records(date, data, updated_at, user) VALUES(?, ?, datetime('now','localtime'), ?)",
+            (date, json.dumps(new, ensure_ascii=False), user),
+        )
+        if changes:
+            con.execute(
+                "INSERT INTO changelog(ts, week, user, message) VALUES(datetime('now','localtime'), ?, ?, ?)",
+                (monday_of(date), user, f"後処理日報・洗浄記録 {md(date)} 保存\n" + "\n".join(changes)),
+            )
+        con.commit()
+        self.send_json({"ok": True, "changes": changes})
 
     def issue_day(self, con, data):
         """成型予定表・前処理製造予定表の発行：控えを残して改版を上げ、Excelを書き出す"""

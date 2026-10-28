@@ -555,7 +555,7 @@ function seikeiHtml() {
 // ---------- 表の表示と印刷（前処理製造予定表・成型予定表で共通） ----------
 const SHEETS = {
   zensho: { html: zenshoHtml, paper: "A4縦", hint: "赤字＝前回の発行から B数が変わった製品。" },
-  seikei: { html: seikeiHtml, paper: "A3横", hint: "赤字＝前回の発行から B数か開始時刻が変わった行。項目は「印刷する項目…」で選んだものです。" },
+  seikei: { html: seikeiHtml, paper: "A4横", hint: "赤字＝前回の発行から B数か開始時刻が変わった行。項目は「印刷する項目…」で選んだものです。" },
 };
 let sheetKind = null;
 function openSheet(kind) {

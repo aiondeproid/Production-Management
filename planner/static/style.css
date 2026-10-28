@@ -186,8 +186,10 @@ table.daytable { border-collapse: separate; border-spacing: 0; font-size: 13px; 
   @page { size: A3 portrait; margin: 8mm; }
   @page zensho { size: A4 portrait; margin: 10mm; }
   #printArea.zensho { page: zensho; }
-  @page seikei { size: A3 landscape; margin: 8mm; }
+  @page seikei { size: A4 landscape; margin: 7mm; }
   #printArea.seikei { page: seikei; }
+  @page post { size: A4 landscape; margin: 7mm; }
+  #printArea.post { page: post; }
   body.printing { background: #fff; color: #000; }
   body.printing > *:not(#printArea) { display: none !important; }
   body.printing #printArea { display: block; font-family: "Meiryo UI", "Yu Gothic UI", sans-serif; color: #000; font-size: 8.5pt; }
@@ -248,4 +250,40 @@ table.daytable { border-collapse: separate; border-spacing: 0; font-size: 13px; 
 .ssheet .sline span { color: #5d6678; font-size: 9pt; }
 .ssheet thead th { white-space: normal; font-size: 8pt; }
 .ssheet td { height: 8mm; line-height: 1.2; }
-@media print { body.printing #printArea.seikei .ssheet { font-size: 9pt; } }
+@media print {
+  body.printing #printArea.seikei .ssheet { font-size: 7.5pt; }
+  body.printing #printArea.seikei .ssheet h1 { font-size: 14pt; }
+  body.printing #printArea.seikei .ssheet .sdate { font-size: 11pt; margin: 1mm 0 1.5mm; }
+  body.printing #printArea.seikei .ssheet thead th { font-size: 6.5pt; padding: 0.3mm 0.2mm; }
+  body.printing #printArea.seikei .ssheet td { height: 5.5mm; padding: 0.3mm 0.5mm; }
+  body.printing #printArea.seikei .ssheet .sline { margin: 1.5mm 0 0.5mm; }
+  body.printing #printArea.seikei .ssheet .sline b { font-size: 9.5pt; }
+  body.printing #printArea.seikei .ssheet table { margin-bottom: 2mm; }
+}
+
+/* ---------- 後処理日報・洗浄記録 ---------- */
+.psec { margin: 14px 0 6px; font-size: 16px; }
+.psec small { font-weight: normal; color: var(--sub); font-size: 12px; }
+.psechead { display: flex; align-items: baseline; gap: 16px; }
+.pwrap { max-height: none; }
+.ptbl td, .ptbl th { padding: 3px 5px; vertical-align: middle; }
+.ptbl td.c { text-align: center; }
+.ptbl td.nm { min-width: 180px; }
+.ptbl td.wrap { min-width: 220px; font-size: 12px; }
+.ptbl td.sub, .ptbl .sub { color: var(--sub); white-space: nowrap; }
+.ptbl tr.lnrow th { background: var(--head); position: static; font-size: 14px; }
+.ptbl tr.lnrow th small { font-weight: normal; color: var(--sub); }
+.ptbl .warnc { color: var(--amber); }
+/* 印刷（.zsheet の上に足す。A4横） */
+.psheet .zhead { align-items: center; }
+.psheet h1 { font-size: 15pt; letter-spacing: 2pt; }
+.psheet .pdate { font-size: 12pt; }
+.psheet .plegend { font-size: 8pt; }
+.psheet .stamp { width: 20mm; margin: 0; border-collapse: collapse; }
+.psheet .stamp th { height: auto; font-size: 8pt; background: #fff; }
+.psheet .stamp td { height: 12mm; }
+.psheet .uline { display: inline-block; min-width: 30mm; border-bottom: 0.5pt solid #000; }
+.psheet tr.lnhead th { text-align: left; background: #d9e1f2; font-size: 9.5pt; height: auto; padding: 0.3mm 2mm; }
+.psheet td { height: 6.2mm; font-size: 8pt; line-height: 1.15; }
+.psheet td.big { font-size: 10pt; font-weight: bold; }
+.psheet .pfoot { margin-top: 1.5mm; font-size: 8pt; }

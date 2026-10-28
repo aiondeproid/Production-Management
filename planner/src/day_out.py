@@ -31,7 +31,7 @@ def date_label(date: str) -> str:
 
 
 def page_setup(ws, landscape=True):
-    ws.page_setup.paperSize = ws.PAPERSIZE_A4 if not landscape else ws.PAPERSIZE_A3
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
     ws.page_setup.orientation = "landscape" if landscape else "portrait"
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0

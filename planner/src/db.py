@@ -5,6 +5,7 @@
 """
 import datetime as dt
 import sqlite3
+import sys
 import unicodedata
 
 from config import APP_DIR
@@ -101,6 +102,14 @@ CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+-- 後処理日報・洗浄記録に書き込む内容（日ごと。出来高・洗浄時刻・担当者など）。JSON
+--   行は (ライン, コード, 何回目) のキーで持つ。作業予定の行は day_rows から作る
+CREATE TABLE IF NOT EXISTS post_records (
+    date TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    updated_at TEXT,
+    user TEXT
+);
 CREATE TABLE IF NOT EXISTS changelog (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
@@ -123,8 +132,11 @@ def connect() -> sqlite3.Connection:
     con.executescript(SCHEMA)
     added = migrate(con)
     if set(added) & set(FORMING_COLS) and con.execute("SELECT COUNT(*) FROM products").fetchone()[0]:
-        import importer  # 前工程の列を足したときは、Book1 から値を入れる（空の欄だけ・1回だけ）
-        importer.fill_forming(con)
+        import importer  # 製品の情報の列を足したときは、Book1 から値を入れる（空の欄だけ・1回だけ）
+        try:
+            importer.fill_forming(con)
+        except OSError as ex:  # Book1 が見つからなくてもアプリは動かす（値は製品マスタで入れる）
+            print("Book1 から製品の情報を入れられませんでした:", ex, file=sys.stderr)
     return con
 
 
@@ -140,7 +152,7 @@ def set_setting(con, key: str, value):
     con.commit()
 
 
-# 前工程（成型予定表・前処理製造予定表）に出す製品の情報：列名 → (Book1 の列（0始まり）, 型, 見出し)
+# 成型予定表・前処理製造予定表・後処理日報・洗浄記録に出す製品の情報：列名 → (Book1 の列（0始まり）, 型, 見出し)
 FORMING_COLS = {
     "shot": (2, "REAL", "ショット"),
     "mix": (4, "TEXT", "配合"),
@@ -160,6 +172,12 @@ FORMING_COLS = {
     "meat": (66, "TEXT", "食肉区分"),
     "plate": (80, "TEXT", "プレート"),
     "kenkin": (81, "TEXT", "金検"),
+    # 後処理日報・洗浄記録
+    "film": (18, "TEXT", "フィルム"),
+    "post_color": (19, "TEXT", "後処理焼色"),
+    "counter": (20, "TEXT", "計数機設定"),
+    "meat_comp": (55, "TEXT", "肉組成"),
+    "occupy_min": (72, "REAL", "ライン占拠（分）"),
 }
 
 

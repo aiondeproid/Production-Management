@@ -54,6 +54,7 @@ document.querySelectorAll(".tabs button").forEach((b) =>
     document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t.id === "tab-" + b.dataset.tab));
     if (b.dataset.tab === "day") openDayTab().catch((e) => toast("作業予定を開けませんでした：" + e.message));
+    if (b.dataset.tab === "post") openPostTab().catch((e) => toast("後処理日報・洗浄記録を開けませんでした：" + e.message));
     if (b.dataset.tab === "master") renderMaster();
     if (b.dataset.tab === "history") loadHistory();
   })
@@ -80,10 +81,11 @@ function applyLock(lock) {
         toast("編集できるようになりました");
         await loadWeek(state.week.monday, true);
         if (dayState.date) await loadDay(dayState.date, true);
+        if (postState.date) await loadPost(postState.date, true);
       }
     };
   }
-  document.querySelectorAll("#grid input, #mTable input, #dayLines input").forEach((i) => (i.disabled = !state.editable));
+  document.querySelectorAll("#grid input, #mTable input, #dayLines input, #tab-post input").forEach((i) => (i.disabled = !state.editable));
 }
 
 // ---------- 週の一覧 ----------
@@ -540,7 +542,7 @@ function printWeek() {
     </table>
     ${removed.length ? `<div class="premoved"><b>■ 前回の発行から削除した明細</b>${removed.map((r) => `<div>${esc(r)}</div>`).join("")}</div>` : ""}`);
 }
-// 印刷用の内容を #printArea に入れて印刷する。kind で用紙を変える（week＝A3縦、zensho＝A4縦、seikei＝A3横。style.css の @page）
+// 印刷用の内容を #printArea に入れて印刷する。kind で用紙を変える（week＝A3縦、zensho＝A4縦、seikei・post＝A4横。style.css の @page）
 function printHtml(kind, html) {
   $("#printArea").className = kind;
   $("#printArea").innerHTML = html;
@@ -561,7 +563,7 @@ document.addEventListener("keydown", (e) => {
     else if ($("#tab-week").classList.contains("on")) $("#save").click();
   }
 });
-window.addEventListener("beforeunload", (e) => { if (state.dirty || dayState.dirty) { e.preventDefault(); e.returnValue = ""; } });
+window.addEventListener("beforeunload", (e) => { if (state.dirty || dayState.dirty || postState.dirty) { e.preventDefault(); e.returnValue = ""; } });
 
 // ---------- 製品マスタ ----------
 async function loadProducts() {

@@ -66,7 +66,7 @@ def forming_values(sh, r) -> dict:
         if typ == "REAL":
             v = num(v) or None
         else:
-            v = norm(v)
+            v = code_str(v)  # 数字だけの欄（計数機設定など）は「100.0」でなく「100」にする
             v = None if v in ("", "0") else v
         out[k] = v
     return out
