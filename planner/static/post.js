@@ -124,7 +124,7 @@ function washScreen(lines) {
       <td class="wrap">${esc(p.wash || "")}</td>
       <td>${pIn(key, "wash", 4, 'list="washList"')}</td><td>${esc(p.meat_comp || "")}</td>
       <td class="c">${pChk(key, "wash_mix")}</td><td class="c">${pChk(key, "wash_form")}</td>
-      <td>${pIn(key, "wash_time", 5, 'placeholder="15:30"')}</td><td>${pIn(key, "wash_by", 7)}</td><td>${pIn(key, "checked_by", 7)}</td></tr>`).join("");
+      <td>${pIn(key, "wash_time", 5, 'title="15:30 や 1530 のように入れます"')}</td><td>${pIn(key, "wash_by", 7)}</td><td>${pIn(key, "checked_by", 7)}</td></tr>`).join("");
     return `<tr class="lnrow"><th colspan="16">${ln}ライン</th></tr>${rows || `<tr><td colspan="16" class="sub">製造なし</td></tr>`}`;
   }).join("");
   return `<div class="tablewrap pwrap"><table class="grid ptbl"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
