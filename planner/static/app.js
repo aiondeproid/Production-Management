@@ -15,6 +15,7 @@ const state = {
   cells: {},      // "日付|ライン" → [{ code, batches }]
   tareFixed: {},  // "日付" → タレ欄の手入力の行 [{ code, name, kg }]（自動の行は毎回計算する）
   betten: {},     // "日付" → 別添タレ [{ code, kg, bags, bags_auto }]
+  shifts: {},     // "日付" → 昼・夜のライン数 { day, night（手で直した値）, auto_day, auto_night（作業予定から数えた数） }
   dirty: false,
 };
 
@@ -138,6 +139,7 @@ async function loadWeek(monday, force = false) {
   state.betten = {};
   for (const d of w.dates) state.betten[d] = [];
   for (const b of w.betten) state.betten[b.date].push({ code: b.code, kg: b.kg, bags: b.bags, bags_auto: b.bags_auto });
+  state.shifts = w.shifts;
   store.set("week", monday);
   setDirty(false);
   $("#weekTitle").textContent = `${w.title}（${md(w.dates[0])}〜${md(w.dates[w.dates.length - 1])}）`;
@@ -337,13 +339,26 @@ function renderGrid() {
   const rows = dates.map((d, i) => {
     const dd = new Date(d + "T00:00:00");
     const cells = LINES.map((ln) => `<td><div class="cell" data-key="${d}|${ln}"></div></td>`).join("");
-    return `<tr class="${i === 5 ? "sat" : ""}"><th class="day"><div class="d">${dd.getDate()}</div><div>（${WEEK[i]}）</div></th>${cells}<td><div class="tcell" data-date="${d}"></div></td><td><div class="bcell" data-date="${d}"></div></td></tr>`;
+    return `<tr class="${i === 5 ? "sat" : ""}"><th class="day"><div class="d">${dd.getDate()}</div><div>（${WEEK[i]}）</div>${shiftHtml(d)}</th>${cells}<td><div class="tcell" data-date="${d}"></div></td><td><div class="bcell" data-date="${d}"></div></td></tr>`;
   }).join("");
   $("#grid").innerHTML = head + "<tbody>" + rows + "</tbody>";
   document.querySelectorAll("#grid .cell").forEach(renderCell);
+  document.querySelectorAll("#grid .shift input").forEach((inp) => inp.addEventListener("input", () => {
+    state.shifts[inp.dataset.date][inp.dataset.k] = inp.value.trim();
+    setDirty(true);
+  }));
   dates.forEach(renderTareCell);
   dates.forEach(renderBettenCell);
   markChanges();
+}
+
+// 昼・夜に動くライン数。空欄なら作業予定から数えた数（薄い字）を使う。手で入れた値（2.5・なし なども可）が優先
+const shiftText = (d, k) => { const s = state.shifts[d]; return s[k] || (s["auto_" + k] ? String(s["auto_" + k]) : ""); };
+function shiftHtml(d) {
+  const s = state.shifts[d], dis = state.editable ? "" : "disabled";
+  const one = (k, label) => `<label>${label}<input data-date="${d}" data-k="${k}" value="${esc(s[k])}" placeholder="${s["auto_" + k] || ""}" size="2" ${dis}
+    title="空欄なら作業予定から数えた数（${s["auto_" + k]}）を使います。違うときは数字や「なし」を入れてください"></label>`;
+  return `<div class="shift">${one("day", "昼")}${one("night", "夜")}</div>`;
 }
 
 function renderCell(cellEl) {
@@ -460,7 +475,8 @@ async function save() {
   if (bad.length && !confirm(`コードかB数が空の明細が ${bad.length} 件あります。この明細は保存されません。続けますか？`)) return false;
   const unknown = flatItems().filter((i) => !state.products[i.code]);
   if (unknown.length && !confirm(`製品マスタに無いコードがあります（${[...new Set(unknown.map((i) => i.code))].join("、")}）。このまま保存しますか？`)) return false;
-  const r = await api("/api/week", { monday: state.week.monday, user: userName(), items: flatItems(), tare: flatTare(), betten: flatBetten() });
+  const r = await api("/api/week", { monday: state.week.monday, user: userName(), items: flatItems(), tare: flatTare(), betten: flatBetten(),
+    shifts: Object.fromEntries(Object.entries(state.shifts).map(([d, s]) => [d, { day: s.day, night: s.night }])) });
   await loadWeek(state.week.monday, true);
   await refreshWeeks();
   toast(r.changes.length ? `保存しました（${r.changes.length}件の変更）` : "保存しました（変更なし）");
@@ -497,12 +513,13 @@ function printWeek() {
     const per = Object.fromEntries(LINES.map((ln) => [ln, state.cells[`${d}|${ln}`].filter((e) => e.code && Number(e.batches) > 0)]));
     const tare = buildTare(d).filter((t) => (t.code || t.name) && Number(t.kg) > 0);
     const bet = state.betten[d].filter((b) => b.code && Number(b.kg) > 0);
-    const n = Math.max(2, tare.length + 1, bet.length, ...LINES.map((ln) => per[ln].length + 1)); // 最後の1行は合計
+    const n = Math.max(3, tare.length + 1, bet.length, ...LINES.map((ln) => per[ln].length + 1)); // 最後の1行は合計
     const dd = new Date(d + "T00:00:00");
     const rows = [];
     for (let i = 0; i < n; i++) {
       const last = i === n - 1;
-      let tr = i === 0 ? `<th class="pdate" rowspan="${n}">${dd.getDate()}<br><small>${WEEK[di]}</small></th>` : "";
+      const sh = shiftText(d, "day") || shiftText(d, "night") ? `<div class="pshift">昼${esc(shiftText(d, "day"))}<br>夜${esc(shiftText(d, "night"))}</div>` : "";
+      let tr = i === 0 ? `<th class="pdate" rowspan="${n}">${dd.getDate()}<br><small>${WEEK[di]}</small>${sh}</th>` : "";
       for (const ln of LINES) {
         const e = per[ln][i];
         if (e) {

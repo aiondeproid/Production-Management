@@ -30,7 +30,8 @@ def cs_of(item, products):
 
 
 def build(monday: str, items: list, tare: list, betten: list, products: dict, rev: int, issued_at: dt.datetime,
-          changed_keys: set, change_lines: list, distribution: str):
+          changed_keys: set, change_lines: list, distribution: str, shifts: dict | None = None):
+    """shifts … 日付 → (昼, 夜) のライン数の文字。日付の欄の下に「昼 3／夜 3」と出す"""
     wb = Workbook()
     ws = wb.active
     ws.title = "週間予定"
@@ -93,8 +94,10 @@ def build(monday: str, items: list, tare: list, betten: list, products: dict, re
         per_line = {ln: [it for it in items if it["date"] == d and it["line"] == ln] for ln in LINES}
         day_tare = [t for t in tare if t["date"] == d]
         day_bet = [b for b in betten if b["date"] == d]
-        n = max(3, len(day_tare) + 1, len(day_bet), *(len(v) + 1 for v in per_line.values()))  # 最後の1行は合計
-        ws.cell(r, 1, f"{day.day}\n（{WEEKDAYS[di]}）")
+        sh_day, sh_night = (shifts or {}).get(d, ("", ""))
+        has_shift = bool(sh_day or sh_night)
+        n = max(5 if has_shift else 3, len(day_tare) + 1, len(day_bet), *(len(v) + 1 for v in per_line.values()))  # 最後の1行は合計
+        ws.cell(r, 1, f"{day.day}\n（{WEEKDAYS[di]}）" + (f"\n\n昼 {sh_day}\n夜 {sh_night}" if has_shift else ""))
         ws.merge_cells(start_row=r, start_column=1, end_row=r + n - 1, end_column=1)
         ws.cell(r, 1).font = f(size=12, bold=True, color="1F4E9E" if di == 5 else "000000")
         ws.cell(r, 1).alignment = center

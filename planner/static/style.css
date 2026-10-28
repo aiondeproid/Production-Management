@@ -59,6 +59,10 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .weekgrid thead th { background: var(--head); padding: 6px; }
 .weekgrid th.day { width: 72px; background: var(--head); text-align: center; padding: 8px 4px; }
 .weekgrid th.day .d { font-size: 18px; }
+.weekgrid th.day .shift { margin-top: 8px; display: grid; gap: 3px; font-weight: normal; }
+.weekgrid th.day .shift label { display: flex; align-items: center; justify-content: center; gap: 2px; font-size: 12px; }
+.weekgrid th.day .shift input { width: 34px; padding: 1px 3px; text-align: center; font-weight: bold; }
+.weekgrid th.day .shift input::placeholder { color: var(--sub); font-weight: normal; opacity: 1; }
 .weekgrid tr.sat td, .weekgrid tr.sat th.day { background: var(--sat); }
 .weekgrid th.day .holiday { color: var(--red); }
 .cell { padding: 4px; min-height: 60px; }
@@ -206,6 +210,7 @@ table.daytable { border-collapse: separate; border-spacing: 0; font-size: 13px; 
   #printArea .ptable thead th { background: #e8ecf3; font-weight: bold; }
   #printArea .ptable .pdate { font-size: 11pt; background: #fff; white-space: nowrap; }
   #printArea .ptable .pdate small { font-size: 9pt; }
+  #printArea .ptable .pdate .pshift { margin-top: 1.5mm; font-size: 7pt; font-weight: bold; line-height: 1.3; }
   #printArea .ptable tbody { break-inside: avoid; }
   #printArea .ptable tbody.sat td, #printArea .ptable tbody.sat .pdate { background: #eef4ff; }
   #printArea .ptable tbody.sat .pdate { color: #1f4e9e; }

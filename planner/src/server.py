@@ -108,6 +108,42 @@ def week_tare(con, monday, items=None, products=None):
     return db.build_tare(items, db.load_tare(con, monday), products)
 
 
+def shift_auto(con, date, products):
+    """作業予定（保存していなければ週間予定からの案）から、昼・夜に動くライン数を数える
+
+    A〜Dラインを数える。境目は config.json の shift_night_from（初期値 18:00）
+    昼＝境目より前に製造があるライン、夜＝境目のあとも製造があるライン
+    """
+    rows, _ = day.rows_for(con, date, products, SETTINGS)
+    timed = [r for r in day.compute(rows, products, SETTINGS) if r["batches"] > 0]
+    return (len({r["line"] for r in timed if r["start_at"] < SETTINGS.shift_night}),
+            len({r["line"] for r in timed if r["end_at"] > SETTINGS.shift_night}))
+
+
+def week_shifts(con, monday, products=None):
+    """日付 → {day, night（手で直した値。無ければ ""）, auto_day, auto_night}"""
+    products = products or db.products(con)
+    dates = db.week_dates(monday)
+    manual = {r["date"]: r for r in con.execute(
+        f"SELECT * FROM shift_counts WHERE date IN ({','.join('?' * len(dates))})", dates)}
+    out = {}
+    for d in dates:
+        a_day, a_night = shift_auto(con, d, products)
+        m = manual.get(d)
+        out[d] = {"day": (m and m["day"]) or "", "night": (m and m["night"]) or "", "auto_day": a_day, "auto_night": a_night}
+    return out
+
+
+def shift_text(s: dict, k: str) -> str:
+    """表示する値：手で直した値、無ければ自動の数（0 は空欄）"""
+    return s[k] or (str(s["auto_" + k]) if s["auto_" + k] else "")
+
+
+def clean_shifts(monday, raw):
+    dates = set(db.week_dates(monday))
+    return {d: {k: db.norm((v or {}).get(k))[:6] for k in ("day", "night")} for d, v in (raw or {}).items() if d in dates}
+
+
 def diff(old, new, products):
     """old→new の変更点。（文章のリスト, 赤字にするキーの集合）"""
     name = lambda c: (products.get(c) or {}).get("name") or c
@@ -319,6 +355,7 @@ class Handler(BaseHTTPRequestHandler):
                     "items": db.load_week(con, m),
                     "tare": week_tare(con, m),
                     "betten": db.load_betten(con, m),
+                    "shifts": week_shifts(con, m),
                     "rev": {k: rev[k] for k in ("rev", "issued_at", "user")} if rev else None,
                     "snapshot": json.loads(rev["snapshot"]) if rev else None,
                 })
@@ -423,6 +460,18 @@ class Handler(BaseHTTPRequestHandler):
             "INSERT INTO betten_items(date, seq, code, kg, bags) VALUES(?,?,?,?,?)",
             [(b["date"], b["seq"], b["code"], b["kg"], b["bags"]) for b in new_betten],
         )
+        # 昼・夜のライン数（手で直した値）。送られてこなかった日はそのまま
+        if "shifts" in data:
+            old_sh = week_shifts(con, m, products)
+            for d, v in clean_shifts(m, data["shifts"]).items():
+                for k, label in (("day", "昼"), ("night", "夜")):
+                    if v[k] != old_sh[d][k]:
+                        auto = old_sh[d]["auto_" + k]
+                        show = lambda x: x or f"自動（{auto}）"
+                        changes.append(f"昼夜：{md(d)} {label} {show(old_sh[d][k])} → {show(v[k])}")
+                con.execute("DELETE FROM shift_counts WHERE date=?", (d,))
+                if v["day"] or v["night"]:
+                    con.execute("INSERT INTO shift_counts(date, day, night) VALUES(?,?,?)", (d, v["day"], v["night"]))
         if changes:
             con.execute(
                 "INSERT INTO changelog(ts, week, user, message) VALUES(datetime('now','localtime'), ?, ?, ?)",
@@ -443,13 +492,13 @@ class Handler(BaseHTTPRequestHandler):
             changes, keys = week_diff(json.loads(prev["snapshot"]), items, tare, betten, products)
             if not changes:
                 when = dt.datetime.fromisoformat(prev["issued_at"])
-                path = self.write_excel(m, items, tare, betten, products, prev["rev"], when, set(), [])
+                path = self.write_excel(con, m, items, tare, betten, products, prev["rev"], when, set(), [])
                 return self.send_json({"rev": prev["rev"], "path": str(path), "changes": [], "note": "前回の発行から変更がないので、同じ版で出力し直しました"})
             rev = prev["rev"] + 1
         else:
             changes, keys, rev = [], set(), 0
         now = dt.datetime.now()
-        path = self.write_excel(m, items, tare, betten, products, rev, now, keys, changes)
+        path = self.write_excel(con, m, items, tare, betten, products, rev, now, keys, changes)
         snapshot = {"items": items, "tare": tare, "betten": betten}
         con.execute(
             "INSERT INTO revisions(week, rev, issued_at, user, snapshot, changes) VALUES(?,?,?,?,?,?)",
@@ -462,8 +511,9 @@ class Handler(BaseHTTPRequestHandler):
         con.commit()
         self.send_json({"rev": rev, "label": excel_out.rev_label(rev), "path": str(path), "changes": changes})
 
-    def write_excel(self, m, items, tare, betten, products, rev, when, keys, changes):
-        wb = excel_out.build(m, items, tare, betten, products, rev, when, keys, changes, CFG["distribution"])
+    def write_excel(self, con, m, items, tare, betten, products, rev, when, keys, changes):
+        shifts = {d: (shift_text(s, "day"), shift_text(s, "night")) for d, s in week_shifts(con, m, products).items()}
+        wb = excel_out.build(m, items, tare, betten, products, rev, when, keys, changes, CFG["distribution"], shifts)
         return excel_out.save(wb, CFG["output_dir"], m)
 
     def save_day(self, con, data):

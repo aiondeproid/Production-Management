@@ -102,6 +102,13 @@ CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+-- 週間予定の日付の欄に出す、昼・夜に動くライン数を手で直した値（"3"・"2.5"・"なし" など）
+--   無い日・空の欄は作業予定から自動で数える（server.shift_auto）
+CREATE TABLE IF NOT EXISTS shift_counts (
+    date TEXT PRIMARY KEY,
+    day TEXT,
+    night TEXT
+);
 -- 後処理日報・洗浄記録に書き込む内容（日ごと。出来高・洗浄時刻・担当者など）。JSON
 --   行は (ライン, コード, 何回目) のキーで持つ。作業予定の行は day_rows から作る
 CREATE TABLE IF NOT EXISTS post_records (

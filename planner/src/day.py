@@ -86,6 +86,7 @@ class Settings:
         self.night = hm_to_min(cfg["night_break"])
         self.night_gap = float(cfg["night_break_min"])
         self.machines = {db.norm(k): int(v) for k, v in cfg["machines"].items() if int(v) > 0}
+        self.shift_night = hm_to_min(cfg["shift_night_from"])
 
     def as_dict(self):
         return {"line_start": self.line_start, "gap": self.gap, "night": self.night, "night_gap": self.night_gap,
